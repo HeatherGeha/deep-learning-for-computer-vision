@@ -1,8 +1,9 @@
 from datasets import GetFrameLoaders, GetVideoListLoaders, GetVideoStackLoaders
 from evaluator import TrainModel
+from conv3dnetwork import GetNetworkOptimizerCriterionAndScheduler
 import torch
 import os
-#os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 def GetDevice() -> torch.device:
     device = torch.device("cpu")
@@ -20,8 +21,13 @@ def GetDevice() -> torch.device:
 
 if __name__ == '__main__':
     device = GetDevice()
-    root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'ufc10')
+    num_epochs = 2
+
+    root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ufc10')
+
     test_loader, train_loader, val_loader = GetVideoStackLoaders(root_dir)
-    trained_model = TrainModel(device, 2, test_loader, train_loader, val_loader)
+    model, optimizer, criterion, scheduler = GetNetworkOptimizerCriterionAndScheduler(device, num_epochs)
+
+    trained_model = TrainModel(device, num_epochs, model, optimizer, criterion, scheduler, test_loader, train_loader, val_loader)
     torch.save(trained_model.state_dict(), 'best_hotdog_cnn_32_64_128_1conv_dropout_lo.pth')
     print("Model saved successfully!")

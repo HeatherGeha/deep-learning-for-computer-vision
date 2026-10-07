@@ -1,13 +1,12 @@
-from network import GetNetworkOptimizerCriterionAndScheduler
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
 
-def TrainModel(device: torch.device, num_epochs: int, 
+def TrainModel(device: torch.device, num_epochs: int,
+               model: torch.nn.Module, optimizer: torch.optim.Optimizer, criterion: torch.nn.Module, scheduler: torch.optim.lr_scheduler.LRScheduler,
                test_loader: torch.utils.data.DataLoader, train_loader: torch.utils.data.DataLoader, val_loader: torch.utils.data.DataLoader) -> torch.nn.Module:
-    
-    model, optimizer, criterion, scheduler = GetNetworkOptimizerCriterionAndScheduler(device, num_epochs)
+        
     data = next(iter(train_loader))[0].to(device)
     print('Shape of the output from the convolutional part', model.convolutional(data).shape)
 
