@@ -1,9 +1,21 @@
 from datasets import GetFrameLoaders, GetVideoListLoaders, GetVideoStackLoaders
-from evaluator import TrainModel
-from conv3dnetwork import GetNetworkOptimizerCriterionAndScheduler
+from evaluator import TrainModel, TestModel
+import aggregationnetwork
+import earlyfusionnetwork
+import latefusionnetwork
+import conv3dnetwork
+import argparse
 import torch
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+#os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
+
+# Each model file provides GetNetworkOptimizerCriterionAndScheduler(device, num_epochs)
+MODELS = {
+    'aggregation': aggregationnetwork,
+    'earlyfusion': earlyfusionnetwork,
+    'latefusion': latefusionnetwork,
+    'conv3d': conv3dnetwork,
+}
 
 def GetDevice() -> torch.device:
     device = torch.device("cpu")
@@ -20,14 +32,30 @@ def GetDevice() -> torch.device:
     return device
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', choices=MODELS.keys(), required=True)
+    parser.add_argument('--epochs', type=int, default=2)
+    parser.add_argument('--data_dir', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ufc10'))
+    args = parser.parse_args()
+
     device = GetDevice()
-    num_epochs = 2
+    num_epochs = args.epochs
 
-    root_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ufc10')
+    root_dir = args.data_dir
 
-    test_loader, train_loader, val_loader = GetVideoStackLoaders(root_dir)
-    model, optimizer, criterion, scheduler = GetNetworkOptimizerCriterionAndScheduler(device, num_epochs)
+    model, optimizer, criterion, scheduler = MODELS[args.model].GetNetworkOptimizerCriterionAndScheduler(device, num_epochs)
 
-    trained_model = TrainModel(device, num_epochs, model, optimizer, criterion, scheduler, test_loader, train_loader, val_loader)
-    torch.save(trained_model.state_dict(), 'best_hotdog_cnn_32_64_128_1conv_dropout_lo.pth')
+    if args.model == 'aggregation':
+        # Train and validate on single frames, test on whole videos by averaging the frame predictions
+        _, train_loader, val_loader = GetFrameLoaders(root_dir)
+        video_test_loader, _, _ = GetVideoStackLoaders(root_dir)
+        trained_model = TrainModel(device, num_epochs, model, optimizer, criterion, scheduler, train_loader, val_loader)
+        test_acc = aggregationnetwork.EvaluateAggregated(device, trained_model, video_test_loader)
+    else:
+        test_loader, train_loader, val_loader = GetVideoStackLoaders(root_dir)
+        trained_model = TrainModel(device, num_epochs, model, optimizer, criterion, scheduler, train_loader, val_loader)
+        _, test_acc = TestModel(device, trained_model, criterion, test_loader)
+
+    print(f"Test Acc: {100*test_acc:.2f}%")
+    torch.save(trained_model.state_dict(), f'{args.model}_best.pth')
     print("Model saved successfully!")
