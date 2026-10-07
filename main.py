@@ -33,8 +33,8 @@ def GetDevice() -> torch.device:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model', choices=MODELS.keys(), required=True)
-    parser.add_argument('--epochs', type=int, default=2)
+    parser.add_argument('--model', choices=MODELS.keys(), default='aggregation')
+    parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--data_dir', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ufc10'))
     args = parser.parse_args()
 
