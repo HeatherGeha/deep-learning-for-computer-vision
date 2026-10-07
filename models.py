@@ -10,7 +10,7 @@ class Network2D(nn.Module):
     """
     2D CNN that processes one frame at a time.
     Returns a 256-dimensional feature vector.
-    """ hi
+    """ 
     def __init__(self):
         super(Network2D, self).__init__()
 
