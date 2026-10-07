@@ -98,13 +98,10 @@ def GetFrameLoaders(root_dir: str):
     frameimage_test_loader = DataLoader(frameimage_test_dataset,  batch_size=8, shuffle=False)
 
     frameimage_train_dataset = FrameImageDataset(root_dir=root_dir, split='train', transform=transform)
-    frameimage_train_loader = DataLoader(frameimage_train_dataset,  batch_size=8, shuffle=False)
+    frameimage_train_loader = DataLoader(frameimage_train_dataset,  batch_size=8, shuffle=True)
 
     frameimage_val_dataset = FrameImageDataset(root_dir=root_dir, split='val', transform=transform)
     frameimage_val_loader = DataLoader(frameimage_val_dataset,  batch_size=8, shuffle=False)
-
-    for frames, labels in frameimage_val_loader:
-        print(frames.shape, labels.shape) # [batch, channels, height, width]
 
     return frameimage_test_loader, frameimage_train_loader, frameimage_val_loader
             
@@ -114,13 +111,10 @@ def GetVideoStackLoaders(root_dir: str):
     framevideostack_test_loader = DataLoader(framevideostack_test_dataset,  batch_size=8, shuffle=False)
 
     framevideostack_train_dataset = FrameVideoDataset(root_dir=root_dir, split='train', transform=transform, stack_frames = True)
-    framevideostack_train_loader = DataLoader(framevideostack_train_dataset,  batch_size=8, shuffle=False)
+    framevideostack_train_loader = DataLoader(framevideostack_train_dataset,  batch_size=8, shuffle=True)
 
     framevideostack_val_dataset = FrameVideoDataset(root_dir=root_dir, split='val', transform=transform, stack_frames = True)
     framevideostack_val_loader = DataLoader(framevideostack_val_dataset,  batch_size=8, shuffle=False)
-
-    for video_frames, labels in framevideostack_val_loader:
-        print(video_frames.shape, labels.shape) # [batch, channels, number of frames, height, width]
 
     return framevideostack_test_loader, framevideostack_train_loader, framevideostack_val_loader
 
@@ -130,13 +124,9 @@ def GetVideoListLoaders(root_dir: str):
     framevideolist_test_loader = DataLoader(framevideolist_test_dataset,  batch_size=8, shuffle=False)
 
     framevideolist_train_dataset = FrameVideoDataset(root_dir=root_dir, split='train', transform=transform, stack_frames = False)
-    framevideolist_train_loader = DataLoader(framevideolist_train_dataset,  batch_size=8, shuffle=False)
+    framevideolist_train_loader = DataLoader(framevideolist_train_dataset,  batch_size=8, shuffle=True)
 
     framevideolist_val_dataset = FrameVideoDataset(root_dir=root_dir, split='val', transform=transform, stack_frames = False)
     framevideolist_val_loader = DataLoader(framevideolist_val_dataset,  batch_size=8, shuffle=False)
-    for video_frames, labels in framevideolist_val_loader:
-        print(45*'-')
-        for frame in video_frames: # loop through number of frames
-            print(frame.shape, labels.shape)# [batch, channels, height, width]
 
     return framevideolist_test_loader, framevideolist_train_loader, framevideolist_val_loader 
