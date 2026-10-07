@@ -7,8 +7,6 @@ def TrainModel(device: torch.device, num_epochs: int,
                model: torch.nn.Module, optimizer: torch.optim.Optimizer, criterion: torch.nn.Module, scheduler: torch.optim.lr_scheduler.LRScheduler,
                test_loader: torch.utils.data.DataLoader, train_loader: torch.utils.data.DataLoader, val_loader: torch.utils.data.DataLoader) -> torch.nn.Module:
         
-    data = next(iter(train_loader))[0].to(device)
-    print('Shape of the output from the convolutional part', model.convolutional(data).shape)
 
     train_losses, val_losses = [], []
     train_accuracies, val_accuracies = [], []
