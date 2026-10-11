@@ -36,6 +36,8 @@ if __name__ == '__main__':
     parser.add_argument('--model', choices=MODELS.keys(), default='aggregation')
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--data_dir', default=os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data', 'ufc10'))
+    # commented out path for Heather working locally
+    # parser.add_argument('--data_dir',default=r'C:\Users\heath\Desktop\Heathers Desktop\school\DTU\deep learning in computer vision\project 2\ucf101 (1)\ufc10')
     args = parser.parse_args()
 
     device = GetDevice()
