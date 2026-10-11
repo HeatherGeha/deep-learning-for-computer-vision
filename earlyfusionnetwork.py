@@ -10,34 +10,43 @@ class Network(nn.Module):
         self.convolutional = nn.Sequential(
             # 10 frames x 3 colour channels = 30 input channels
             nn.Conv2d(30, 32, kernel_size=5, padding=2),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
 
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
 
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
 
             nn.MaxPool2d(2, 2),
 
             nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
 
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
 
             nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
 
             nn.MaxPool2d(2, 2),
 
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
 
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
 
             nn.Conv2d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
 
             nn.MaxPool2d(2, 2)
@@ -45,10 +54,14 @@ class Network(nn.Module):
 
         # 64x64 -> 32x32 -> 16x16 -> 8x8
         self.fully_connected = nn.Sequential(
-            nn.Linear(128 * 8 * 8, 256),
-            nn.ReLU(),
-            nn.Dropout(0.4),
-            nn.Linear(256, 10)
+            #nn.Linear(128 * 8 * 8, 256),
+            #nn.ReLU(),
+            #nn.Dropout(0.4),
+            #nn.Linear(256, 10)
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            #nn.Dropout(0.3),
+            nn.Linear(128, 10)
         )
 
     def forward(self, x):
@@ -57,7 +70,7 @@ class Network(nn.Module):
         x = x.reshape(B, C * T, H, W)
 
         x = self.convolutional(x)
-        x = x.view(x.size(0), -1)
+        #x = x.view(x.size(0), -1)
         x = self.fully_connected(x)
         return x
 
