@@ -3,6 +3,12 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+# Helper function to check if its a tuple or a list
+def _to_device(data, device):
+    if isinstance(data, (tuple, list)):
+        return [x.to(device) for x in data]
+    return data.to(device)
+
 
 def TrainModel(device: torch.device, num_epochs: int,
                model: torch.nn.Module, optimizer: torch.optim.Optimizer, criterion: torch.nn.Module, scheduler: torch.optim.lr_scheduler.LRScheduler,
@@ -18,8 +24,9 @@ def TrainModel(device: torch.device, num_epochs: int,
         running_train_loss, correct_train, total_train = 0.0, 0, 0
 
         for batch_idx, (images, labels) in enumerate(train_loader):
-            images, labels = images.to(device), labels.to(device)
-
+            images = _to_device(images, device)
+            labels = labels.to(device)
+            
             optimizer.zero_grad()
             outputs = model(images)
             loss = criterion(outputs, labels)
@@ -27,7 +34,7 @@ def TrainModel(device: torch.device, num_epochs: int,
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0)
             optimizer.step()
 
-            running_train_loss += loss.item() * images.size(0)
+            running_train_loss += loss.item() * labels.size(0)
             _, preds = torch.max(outputs, 1)
             correct_train += (preds == labels).sum().item()
             total_train += labels.size(0)
@@ -66,14 +73,32 @@ def TestModel(device: torch.device, model: torch.nn.Module, criterion: torch.nn.
 
     with torch.no_grad():
         for images, labels in loader:
-            images, labels = images.to(device), labels.to(device)
+            images = _to_device(images, device)
+            labels = labels.to(device)
 
             outputs = model(images)
             loss = criterion(outputs, labels)
 
-            running_loss += loss.item() * images.size(0)
+            running_loss += loss.item() * labels.size(0)
             _, preds = torch.max(outputs, 1)
             correct += (preds == labels).sum().item()
             total += labels.size(0)
 
     return running_loss / total, correct / total
+
+def EvaluateTwoStreamSweep(device: torch.device, model: torch.nn.Module,
+                           val_spatial_loader: torch.utils.data.DataLoader,
+                           val_temporal_loader: torch.utils.data.DataLoader,
+                           test_spatial_loader: torch.utils.data.DataLoader,
+                           test_temporal_loader: torch.utils.data.DataLoader,
+                           step: float = 0.05) -> tuple[float, float]:
+    """
+    Dedicated helper for the alpha grid search: alpha is chosen on the val loaders,
+    then evaluated once on the test loaders, without interfering with TestModel.
+    """
+    if hasattr(model, 'evaluate_fusion_sweep'):
+        return model.evaluate_fusion_sweep(val_spatial_loader, val_temporal_loader,
+                                           test_spatial_loader, test_temporal_loader,
+                                           device=device, step=step)
+    else:
+        raise AttributeError("The provided model does not implement 'evaluate_fusion_sweep'.")

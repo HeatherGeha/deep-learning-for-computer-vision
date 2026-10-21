@@ -13,4 +13,4 @@
 module load python3/3.11.9
 source ~/venv_dlcv/bin/activate
 
-python main.py --model ${MODEL:-latefusion} --epochs ${EPOCHS:-20} --data_dir /dtu/datasets1/02516/ufc10
+python main.py --model ${MODEL:-twostreamV2} --epochs ${EPOCHS:-50} --data_dir /dtu/datasets1/02516/ucf101_noleakage
