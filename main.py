@@ -1,15 +1,13 @@
-from datasets import GetFrameLoaders, GetVideoListLoaders, GetVideoStackLoaders, GetTwoStreamLoaders
+from datasets import GetFrameLoaders, GetVideoListLoaders, GetVideoStackLoaders, GetSpatialV2Loaders, GetTemporalV2Loaders
 from evaluator import TrainModel, TestModel
 import aggregationnetwork
 import earlyfusionnetwork
 import latefusionnetwork
 import conv3dnetwork
-import dualstreamnetwork
+import dualstreamnetworkV2
 import argparse
 import torch
 import os
-import dualstreamnetworkV2
-from datasets import GetSpatialV2Loaders, GetTemporalV2Loaders
 #os.environ['CUDA_VISIBLE_DEVICES'] = '-1'
 
 # Each model file provides GetNetworkOptimizerCriterionAndScheduler(device, num_epochs)
@@ -18,7 +16,6 @@ MODELS = {
     'earlyfusion': earlyfusionnetwork,
     'latefusion': latefusionnetwork,
     'conv3d': conv3dnetwork,
-    'twostream': dualstreamnetwork,
     'twostreamV2': dualstreamnetworkV2,
 }
 
@@ -50,19 +47,17 @@ if __name__ == '__main__':
 
     root_dir = args.data_dir
 
-    model, optimizer, criterion, scheduler = MODELS[args.model].GetNetworkOptimizerCriterionAndScheduler(device, num_epochs)
-
     if args.model == 'aggregation':
+        model, optimizer, criterion, scheduler = MODELS[args.model].GetNetworkOptimizerCriterionAndScheduler(device, num_epochs)
         # Train and validate on single frames, test on whole videos by averaging the frame predictions
         _, train_loader, val_loader = GetFrameLoaders(root_dir)
         video_test_loader, _, _ = GetVideoStackLoaders(root_dir)
         trained_model = TrainModel(device, num_epochs, model, optimizer, criterion, scheduler, train_loader, val_loader)
         test_acc = aggregationnetwork.EvaluateAggregated(device, trained_model, video_test_loader)
+        print(f"Test Acc: {100*test_acc:.2f}%")
+        torch.save(trained_model.state_dict(), f'{args.model}_best.pth')
 
     elif args.model == "twostreamV2":
-        import dualstreamnetworkV2
-        from datasets import GetSpatialV2Loaders, GetTemporalV2Loaders
-
         job_id = os.environ.get("LSB_JOBID", "local")
         spatial_ckpt = f"spatial_stream_{job_id}.pth"
         temporal_ckpt = f"temporal_stream_{job_id}.pth"
@@ -95,19 +90,19 @@ if __name__ == '__main__':
 
         # STAGE 3
         print("\n" + "=" * 60)
-        print(" [STAGE 3/3] COMBINING STREAMS & SWEEPING FUSION WEIGHTS")
+        print(" [STAGE 3/3] COMBINING STREAMS: ALPHA CHOSEN ON VAL, EVALUATED ON TEST")
         print("=" * 60)
         fused_model = dualstreamnetworkV2.DualStreamNetworkV2().to(device)
         fused_model.spatial_stream.load_state_dict(torch.load(spatial_ckpt, map_location=device))
         fused_model.temporal_stream.load_state_dict(torch.load(temporal_ckpt, map_location=device))
 
         best_alpha, test_acc = fused_model.evaluate_fusion_sweep(
-            s_test_loader, 
-            t_test_loader, 
-            device=device, 
+            s_val_loader, t_val_loader,
+            s_test_loader, t_test_loader,
+            device=device,
             step=0.05
         )
-        print(f"Final Optimal Test Accuracy: {test_acc:.2f}% (at alpha={best_alpha:.2f})")
+        print(f"Test Acc: {test_acc:.2f}% (alpha={best_alpha:.2f}, chosen on val)")
         torch.save(fused_model.state_dict(), f"twostreamV2_{job_id}_best.pth")
 
     else:

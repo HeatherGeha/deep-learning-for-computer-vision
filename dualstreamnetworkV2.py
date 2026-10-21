@@ -159,9 +159,10 @@ class DualStreamNetworkV2(nn.Module):
         fused_prob = (self.fusion_weight * s_prob) + ((1.0 - self.fusion_weight) * t_prob)
         return torch.log(fused_prob + 1e-8)
 
-    def evaluate_fusion_sweep(self, spatial_loader, temporal_loader, device=None, step=0.05):
+    def collect_probs(self, spatial_loader, temporal_loader, device=None):
         """
-        Runs an alpha grid sweep over predictions without having to retrain.
+        Runs both streams over a split and returns (spatial_probs, temporal_probs, targets).
+        The two loaders must iterate over the same videos in the same order.
         """
         if device is None:
             device = next(self.parameters()).device
@@ -172,51 +173,46 @@ class DualStreamNetworkV2(nn.Module):
         all_targets = []
 
         with torch.no_grad():
-            for (s_data, target), (t_data, _) in zip(spatial_loader, temporal_loader):
+            for (s_data, target), (t_data, t_target) in zip(spatial_loader, temporal_loader, strict=True):
+                if not torch.equal(target, t_target):
+                    raise RuntimeError("Spatial and temporal loaders are not aligned (labels differ).")
                 s_data, t_data = s_data.to(device), t_data.to(device)
 
-                s_log_probs = self.spatial_stream(s_data)
-                s_probs = torch.exp(s_log_probs)
-
-                t_logits = self.temporal_stream(t_data)
-                t_probs = torch.softmax(t_logits, dim=1)
+                s_probs = torch.exp(self.spatial_stream(s_data))
+                t_probs = torch.softmax(self.temporal_stream(t_data), dim=1)
 
                 all_spatial_probs.append(s_probs.cpu())
                 all_temporal_probs.append(t_probs.cpu())
                 all_targets.append(target.cpu())
 
-        all_spatial_probs = torch.cat(all_spatial_probs, dim=0)
-        all_temporal_probs = torch.cat(all_temporal_probs, dim=0)
-        all_targets = torch.cat(all_targets, dim=0)
+        return torch.cat(all_spatial_probs), torch.cat(all_temporal_probs), torch.cat(all_targets)
 
-        min_len = min(all_spatial_probs.shape[0], all_temporal_probs.shape[0], all_targets.shape[0])
-        all_spatial_probs = all_spatial_probs[:min_len]
-        all_temporal_probs = all_temporal_probs[:min_len]
-        all_targets = all_targets[:min_len]
+    def evaluate_fusion_sweep(self, val_spatial_loader, val_temporal_loader,
+                              test_spatial_loader, test_temporal_loader, device=None, step=0.05):
+        """
+        Picks the fusion weight alpha with a grid sweep on the VALIDATION set,
+        then evaluates once on the test set with that alpha.
+        """
+        def accuracy(probs, targets):
+            return (torch.argmax(probs, dim=1) == targets).float().mean().item() * 100.0
 
-        spatial_acc = (torch.argmax(all_spatial_probs, dim=1) == all_targets).float().mean().item() * 100.0
-        temporal_acc = (torch.argmax(all_temporal_probs, dim=1) == all_targets).float().mean().item() * 100.0
+        val_s, val_t, val_y = self.collect_probs(val_spatial_loader, val_temporal_loader, device)
 
         print("=" * 64)
-        print("          LATE FUSION SCORE SWEEP (EVALUATION SET)              ")
+        print("          LATE FUSION SCORE SWEEP (VALIDATION SET)              ")
         print("=" * 64)
-        print(f"Isolated Spatial Stream Alone (alpha=1.00) : {spatial_acc:.2f}%")
-        print(f"Isolated Temporal Stream Alone (alpha=0.00): {temporal_acc:.2f}%")
-        print("-" * 64)
-        print(f"{'Spatial Weight (alpha)':<22} | {'Flow Weight (1-alpha)':<22} | {'Accuracy':<10}")
+        print(f"{'Spatial Weight (alpha)':<22} | {'Flow Weight (1-alpha)':<22} | {'Val Accuracy':<10}")
         print("-" * 64)
 
-        best_acc = 0.0
+        best_acc = -1.0
         best_alpha = 0.0
 
         steps = int(round(1.0 / step)) + 1
         for i in range(steps):
             alpha = round(i * step, 4)
-            fused_probs = (alpha * all_spatial_probs) + ((1.0 - alpha) * all_temporal_probs)
-            preds = torch.argmax(fused_probs, dim=1)
-            acc = (preds == all_targets).float().mean().item() * 100.0
+            acc = accuracy(alpha * val_s + (1.0 - alpha) * val_t, val_y)
 
-            highlight = " <-- OPTIMAL" if acc > best_acc else ""
+            highlight = " <-- BEST" if acc > best_acc else ""
             print(f"{alpha:<22.2f} | {(1.0 - alpha):<22.2f} | {acc:.2f}%{highlight}")
 
             if acc > best_acc:
@@ -224,11 +220,19 @@ class DualStreamNetworkV2(nn.Module):
                 best_alpha = alpha
 
         print("=" * 64)
-        print(f"Optimal Alpha Found    : {best_alpha:.2f} (Spatial: {best_alpha*100:.0f}%, Flow: {(1-best_alpha)*100:.0f}%)")
-        print(f"Highest Fused Accuracy : {best_acc:.2f}%\n")
+        print(f"Optimal Alpha Found (val) : {best_alpha:.2f} (Spatial: {best_alpha*100:.0f}%, Flow: {(1-best_alpha)*100:.0f}%)")
+        print(f"Fused Val Accuracy        : {best_acc:.2f}%\n")
 
         self.fusion_weight = best_alpha
-        return best_alpha, best_acc
+
+        test_s, test_t, test_y = self.collect_probs(test_spatial_loader, test_temporal_loader, device)
+        test_acc = accuracy(best_alpha * test_s + (1.0 - best_alpha) * test_t, test_y)
+
+        print(f"Test Spatial Stream Alone : {accuracy(test_s, test_y):.2f}%")
+        print(f"Test Temporal Stream Alone: {accuracy(test_t, test_y):.2f}%")
+        print(f"Test Fused (alpha={best_alpha:.2f})   : {test_acc:.2f}%")
+
+        return best_alpha, test_acc
 
 def GetSpatialOptimizerCriterionAndScheduler(model: nn.Module, num_epochs: int):
     criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
@@ -252,11 +256,3 @@ def GetTemporalOptimizerCriterionAndScheduler(model: nn.Module, num_epochs: int)
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-4)
     return optimizer, criterion, scheduler
-
-#filler function, will not get called but needed so main doesnt crash when calling it globally
-def GetNetworkOptimizerCriterionAndScheduler(device: torch.device, num_epochs: int):
-    model = DualStreamNetworkV2().to(device)
-    crit = nn.CrossEntropyLoss()
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-    sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=num_epochs)
-    return model, opt, crit, sched

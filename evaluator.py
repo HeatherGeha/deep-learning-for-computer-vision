@@ -87,14 +87,18 @@ def TestModel(device: torch.device, model: torch.nn.Module, criterion: torch.nn.
     return running_loss / total, correct / total
 
 def EvaluateTwoStreamSweep(device: torch.device, model: torch.nn.Module,
-                           spatial_loader: torch.utils.data.DataLoader,
-                           temporal_loader: torch.utils.data.DataLoader,
+                           val_spatial_loader: torch.utils.data.DataLoader,
+                           val_temporal_loader: torch.utils.data.DataLoader,
+                           test_spatial_loader: torch.utils.data.DataLoader,
+                           test_temporal_loader: torch.utils.data.DataLoader,
                            step: float = 0.05) -> tuple[float, float]:
     """
-    Dedicated helper for running the alpha grid search across the decoupled 
-    spatial and temporal test loaders without interfering with TestModel.
+    Dedicated helper for the alpha grid search: alpha is chosen on the val loaders,
+    then evaluated once on the test loaders, without interfering with TestModel.
     """
     if hasattr(model, 'evaluate_fusion_sweep'):
-        return model.evaluate_fusion_sweep(spatial_loader, temporal_loader, device=device, step=step)
+        return model.evaluate_fusion_sweep(val_spatial_loader, val_temporal_loader,
+                                           test_spatial_loader, test_temporal_loader,
+                                           device=device, step=step)
     else:
         raise AttributeError("The provided model does not implement 'evaluate_fusion_sweep'.")

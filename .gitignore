@@ -1,12 +1,8 @@
-__pycache__
-*.pth
-videoclass_*.out
-videoclass_*.err
+__pycache__/
 *.pth
 *.pt
 *.out
 *.err
-__pycache__/
 optical_flow_visualization.png
 eval_streams.py
 visualize_flow.py
