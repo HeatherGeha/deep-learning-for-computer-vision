@@ -23,6 +23,8 @@ PH2_SIZE = (288, 384)  # (height, width)
 PH2_N_VAL = 30
 PH2_N_TEST = 30
 CLICK_STRATEGIES = ('random', 'spread')
+# Size of the oval that 'spread' keeps negative clicks in (1.0 touches the image frame)
+VIEW_OVAL_SCALE = 0.85
 
 
 class PH2Dataset(torch.utils.data.Dataset):
@@ -76,8 +78,17 @@ def _erode(region, margin):
     return F.max_pool2d(outside, 2 * margin + 1, stride=1, padding=margin)[0, 0] == 0
 
 
-def _pick_spread(coords, n, rng, n_candidates=20):
-    """Best-candidate sampling: each click is the farthest of a few random options."""
+def _view_oval(shape):
+    """Boolean [H, W] oval that leaves out the dark corners from the dermoscope."""
+    ys, xs = torch.meshgrid(torch.linspace(-1, 1, shape[0]), torch.linspace(-1, 1, shape[1]), indexing='ij')
+    return ys ** 2 + xs ** 2 <= VIEW_OVAL_SCALE ** 2
+
+
+def _pick_spread(coords, n, rng, n_candidates=5):
+    """Best-candidate sampling: each click is the farthest of a few random options.
+
+    More candidates spread the clicks further, but push them to the region's edge.
+    """
     first = rng.integers(len(coords))
     chosen = [coords[first]]
     coords = np.delete(coords, first, axis=0)
@@ -90,12 +101,14 @@ def _pick_spread(coords, n, rng, n_candidates=20):
     return np.array(chosen)
 
 
-def _sample_region(region, n, strategy, margin, rng):
+def _sample_region(region, n, strategy, margin, rng, allowed=None):
     """Returns up to n (y, x) pixels from a boolean [H, W] region."""
     if strategy == 'spread':
-        eroded = _erode(region, margin)
-        if eroded.sum() >= n:  # very small regions keep all of their pixels
-            region = eroded
+        preferred = _erode(region, margin)
+        if allowed is not None:
+            preferred = preferred & allowed
+        if preferred.sum() >= n:  # regions too small for this keep all of their pixels
+            region = preferred
 
     coords = np.argwhere(region.numpy())
     n = min(n, len(coords))
@@ -112,7 +125,8 @@ def sample_clicks(mask, n_pos, n_neg, strategy='random', margin=10, seed=(0,)):
     mask: full mask [1, H, W] in {0, 1}, used only to place the clicks.
     strategy: 'random' samples uniformly inside and outside the lesion.
               'spread' stays margin pixels away from the lesion edge, where a
-              person would avoid clicking, and spreads the clicks out.
+              person would avoid clicking, and spreads the clicks out. Its
+              negative clicks stay inside an oval, off the dark image corners.
 
     Returns a click map [1, H, W]: 1 = positive click, 0 = negative click,
     -1 = unlabelled (to be ignored by the loss).
@@ -125,9 +139,10 @@ def sample_clicks(mask, n_pos, n_neg, strategy='random', margin=10, seed=(0,)):
 
     lesion = mask[0] > 0.5
     clicks = torch.full_like(mask, -1.0)
-    for label, region, n in ((1, lesion, n_pos), (0, ~lesion, n_neg)):
+    oval = _view_oval(lesion.shape)
+    for label, region, n, allowed in ((1, lesion, n_pos, None), (0, ~lesion, n_neg, oval)):
         rng = np.random.default_rng([*seed, label])
-        picked = _sample_region(region, n, strategy, margin, rng)
+        picked = _sample_region(region, n, strategy, margin, rng, allowed)
         clicks[0, picked[:, 0], picked[:, 1]] = float(label)
     return clicks
 
@@ -189,12 +204,13 @@ if __name__ == '__main__':
 
     for strategy in CLICK_STRATEGIES:
         dataset = PH2ClickDataset(root_dir, n_pos=5, n_neg=5, strategy=strategy, flip=False)
-        n_pos, n_neg = 0, 0
+        n_pos, n_neg, outside_oval = 0, 0, 0
         for i in range(len(dataset)):
             _, clicks = dataset[i]
             _, mask = PH2Dataset.__getitem__(dataset, i)
             assert (mask[clicks == 1] == 1).all() and (mask[clicks == 0] == 0).all(), dataset.ids[i]
             n_pos += (clicks == 1).sum().item()
             n_neg += (clicks == 0).sum().item()
+            outside_oval += ((clicks[0] == 0) & ~_view_oval(mask.shape[1:])).sum().item()
         print(f'clicks ({strategy}): {len(dataset)} images, {n_pos} positive, {n_neg} negative, '
-              f'all on the correct side of the mask')
+              f'all on the correct side of the mask, {outside_oval} negative outside the oval')
