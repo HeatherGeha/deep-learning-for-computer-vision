@@ -31,7 +31,7 @@ def TrainModel(device: torch.device, num_epochs: int,
             outputs = model(images)
             loss = criterion(outputs, labels)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
             running_loss += loss.item() * labels.size(0)
@@ -87,3 +87,45 @@ def TestModel(device, model, criterion, loader):
             n_pixels += labels.numel()
 
     return running_loss / n_images, correct / n_pixels
+
+
+"""Full 5 metric evaluator"""
+
+def EvaluateAllMetrics(device, model, criterion, loader, eps=1e-7):
+    """
+    Dice Overlap, IoU, Accuracy, Sensitivity, and Specificity.
+    """
+    model.eval()
+    running_loss, n_images = 0.0, 0
+    total_tp, total_fp, total_fn, total_tn = 0, 0, 0, 0
+
+    with torch.no_grad():
+        for images, labels in loader:
+            images = _to_device(images, device)
+            labels = labels.to(device)
+
+            outputs = model(images)
+            loss = criterion(outputs, labels)
+
+            running_loss += loss.item() * labels.size(0)
+            n_images += labels.size(0)
+
+            preds = (outputs > 0).float()
+            total_tp += (preds * labels).sum().item()
+            total_fp += (preds * (1 - labels)).sum().item()
+            total_fn += ((1 - preds) * labels).sum().item()
+            total_tn += ((1 - preds) * (1 - labels)).sum().item()
+
+    avg_loss = running_loss / n_images
+    tp, fp, fn, tn = total_tp, total_fp, total_fn, total_tn
+
+    """we now have the four metrics true positive, false positive, false negative and true negative, and we can use them to build our 5 metrics"""
+
+    return {
+        'loss': avg_loss,
+        'dice': (2 * tp) / (2 * tp + fp + fn + eps),
+        'iou': tp / (tp + fp + fn + eps),
+        'accuracy': (tp + tn) / (tp + tn + fp + fn + eps),
+        'sensitivity': tp / (tp + fn + eps),
+        'specificity': tn / (tn + fp + eps),
+    } 

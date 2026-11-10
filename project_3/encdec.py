@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from losses import DiceLoss
 
 class Network(nn.Module):
     def __init__(self):
@@ -60,17 +61,13 @@ class Network(nn.Module):
         d4 = self.dec_conv4(self.upsample4(d3))  # no activation
         return d4
 
-class DiceLoss(nn.Module):
-    def forward(self, y_pred, y_true):
-        loss = 1
-        loss -= torch.mean(2 * y_pred * y_true + 1) / (torch.mean(y_pred + y_true) + 1)
-        return loss
+
     
 
 
 def GetNetworkOptimizerCriterionAndScheduler(device: torch.device, num_epochs: int):
     model = Network().to(device)
     criterion = DiceLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, betas=(0.85, 0.999), weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=3e-4, betas=(0.85, 0.999), weight_decay=1e-4)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-5)
     return model, optimizer, criterion, scheduler

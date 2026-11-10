@@ -19,6 +19,10 @@ from torch.utils.data import DataLoader
 
 from seg_common import split_ids, transform_sample
 
+import torchvision.transforms.functional as TF
+import random
+
+
 DRIVE_ROOT = '/dtu/datasets1/02516/DRIVE'
 # Close to the original 584 x 565, and divisible by 32 for the U-Net
 DRIVE_SIZE = (512, 512)  # (height, width)
@@ -98,3 +102,49 @@ if __name__ == '__main__':
               f'mean vessel fraction inside FOV {sum(vessel_in_fov) / len(vessel_in_fov):.3f}')
         print(f'  original (W, H) sizes: {sorted(sizes)}')
         print(f'  ids: {sorted(dataset.ids)}')
+
+class AugmentedDRIVEDataset(DRIVEDataset):
+    """
+    Extension of DRIVEDataset applying joint spatial rotations, flips,
+    and photometric noise.
+    """
+    def __init__(self, root_dir=DRIVE_ROOT, split='train', size=DRIVE_SIZE, return_fov=False):
+        super().__init__(root_dir=root_dir, split=split, size=size, return_fov=return_fov)
+        self.split = split  
+
+    def __getitem__(self, idx):
+        image, vessels = super().__getitem__(idx)
+        
+        # Only apply during training
+        if self.split == 'train':
+            if random.random() > 0.5:
+                image = TF.hflip(image)
+                vessels = TF.hflip(vessels)
+            if random.random() > 0.5:
+                image = TF.vflip(image)
+                vessels = TF.vflip(vessels)
+            if random.random() > 0.5:
+                angle = random.uniform(-45, 45)
+                image = TF.rotate(image, angle)
+                vessels = TF.rotate(vessels, angle)
+            if random.random() > 0.5:
+                brightness_factor = random.uniform(0.8, 1.2)
+                contrast_factor = random.uniform(0.8, 1.2)
+                image = TF.adjust_brightness(image, brightness_factor)
+                image = TF.adjust_contrast(image, contrast_factor)
+
+        return image, vessels
+
+def GetAugmentedDRIVELoaders(root_dir=DRIVE_ROOT, batch_size=2, num_workers=0, size=DRIVE_SIZE):
+    """
+    DataLoader factory function for Extended U-Net (Hybrid Loss + Data Augmentations).
+    """
+    train_set = AugmentedDRIVEDataset(root_dir, split='train', size=size)
+    val_set = DRIVEDataset(root_dir, split='val', size=size)
+    test_set = DRIVEDataset(root_dir, split='test', size=size)
+
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+
+    return test_loader, train_loader, val_loader
