@@ -18,6 +18,8 @@ from torch.utils.data import DataLoader
 from seg_common import random_flips, split_ids, transform_sample
 
 PH2_ROOT = '/dtu/datasets1/02516/PH2_Dataset_images'
+#change root for heather to work locally
+#PH2_ROOT = r'C:/Users/heath/Desktop/Heather Python/DTU/Deep Learning in Computer Vision/PH2_Dataset_images'
 # About the 3:4 shape of the original images, and divisible by 32 for the U-Net
 PH2_SIZE = (288, 384)  # (height, width)
 PH2_N_VAL = 30

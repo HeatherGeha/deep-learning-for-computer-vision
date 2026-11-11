@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+
 # Helper function to check if its a tuple or a list
 def _to_device(data, device):
     if isinstance(data, (tuple, list)):
