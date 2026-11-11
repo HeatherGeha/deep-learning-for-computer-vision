@@ -54,3 +54,40 @@ class DiceFocalLoss(nn.Module):
         loss_dice = self.dice(logits, targets)
         loss_focal = self.focal(logits, targets)
         return self.dice_weight * loss_dice + self.focal_weight * loss_focal
+
+# loss function for point-level supervision
+# L: two classes, Lesion and Background
+# L': is empty, because we have both classes present in every image
+# I_s are the pixels containing clicks
+# G_i is the click label (0, no click or 1, click)
+# alpha_i is the click weight
+# Point-level-loss = Image-level-loss(S,L,L')- sum over all i in I(alpha_i log(S_{iG_i}))
+class PointLevelLoss(nn.Module): 
+    def __init__(self, alpha=1.0): # default alpha=1 is the same as regular cross-entropy on clicked pixels only
+        super().__init__()
+        self.alpha = alpha
+     
+    def forward(self, predictions, targets):
+        # implement the image level loss
+        # convert logits into lesion probabilities (networks output logits)
+        probabilities = torch.sigmoid(predictions)
+        # find the highest probability for each class
+        max_lesion = probabilities.flatten(1).max(dim=1).values
+        max_background = (1 - probabilities).flatten(1).max(dim=1).values
+        # calculate image-level loss
+        image_loss = -0.5 * (torch.log(max_lesion.clamp(min=1e-7)).mean()+ torch.log(max_background.clamp(min=1e-7)).mean())
+
+        # now we implement the click-term (the subtracted term in point-level-loss)
+        # identify labelled pixels
+        labelled = targets != -1
+        # replace unlabelled targets with 0
+        targets = targets.clamp(min=0)
+        # calculate click-level loss
+        click_loss = -(targets * torch.log(probabilities.clamp(min=1e-7))
+        + (1 - targets) * torch.log((1 - probabilities).clamp(min=1e-7)))
+        # keep only the losses at clicked pixels
+        click_loss = click_loss * labelled
+        # average over clicked pixels
+        click_loss = click_loss.flatten(1).sum(dim=1).mean()
+
+        return image_loss + self.alpha * click_loss
