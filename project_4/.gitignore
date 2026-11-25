@@ -1,0 +1,6 @@
+__pycache__/
+*.out
+*.err
+.DS_Store
+# regenerate in seconds with: python label_proposals.py
+labeled_proposals.pt
