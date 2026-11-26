@@ -1,5 +1,6 @@
 import torch
 from torchvision.ops import box_iou
+from proposals import PotholeImage
 
 def EvaluateProposals(results, proposal_counts, iou_threshold=0.5):
     """Evaluate proposal recall for different numbers of proposals."""
@@ -12,11 +13,11 @@ def EvaluateProposals(results, proposal_counts, iou_threshold=0.5):
     for sample in results.values():
 
         # only evaluate on the training set
-        if sample['split'] != 'train':
+        if sample.split != 'train':
             continue
 
-        proposals = sample['proposals']
-        boxes = sample['boxes']
+        proposals = sample.proposals
+        boxes = sample.boxes
 
         total_objects += len(boxes)
         total_proposals += len(proposals)
